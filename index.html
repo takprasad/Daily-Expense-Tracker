@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Ledger — Expense Tracker</title>
+<title>Rupaya — Expense Tracker</title>
 <meta name="theme-color" content="#1F2D3D">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -88,12 +88,13 @@ p{margin:0;}
 }
 
 /* ============ TOP BAR ============ */
-.topbar{display:flex;align-items:center;justify-content:space-between;padding:22px 20px 10px;position:relative;}
+.topbar{display:flex;align-items:center;justify-content:flex-start;padding:22px 20px 10px;position:relative;}
 .top-progress{position:absolute;left:0;top:0;height:2px;width:0%;background:linear-gradient(90deg, var(--mustard), var(--rust));transition:width .3s var(--ease);border-radius:0 2px 2px 0;}
 .top-progress.active{animation:topProgress 1.1s ease-in-out infinite;}
 @keyframes topProgress{0%{width:0%;margin-left:0%;}50%{width:60%;margin-left:20%;}100%{width:0%;margin-left:100%;}}
-.brand{display:flex;align-items:center;gap:10px;}
-.brand-mark{width:34px;height:34px;border-radius:9px;background:linear-gradient(155deg, var(--ink), #2c3d52);color:var(--paper-alt);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-weight:700;font-size:15px;transform:rotate(-4deg);box-shadow:var(--shadow-sm);}
+.brand{display:flex;align-items:center;gap:10px;justify-content:flex-start;text-align:left;}
+.brand-mark{width:34px;height:34px;border-radius:9px;background:linear-gradient(155deg, var(--ink), #2c3d52);color:var(--paper-alt);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-weight:700;font-size:15px;transform:rotate(-4deg);box-shadow:var(--shadow-sm);flex-shrink:0;}
+.brand-text{text-align:left;}
 .brand-text h1{font-size:20px;font-weight:600;letter-spacing:-0.2px;}
 .brand-text span{font-size:11px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:1.5px;}
 .icon-btn{width:38px;height:38px;border-radius:50%;border:1px solid var(--line-strong);background:var(--paper-alt);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;color:var(--ink);transition:transform .15s var(--ease), background .15s ease, border-color .15s ease;flex-shrink:0;}
@@ -165,6 +166,11 @@ p{margin:0;}
 
 /* ============ INSIGHT ============ */
 .insight-line{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-soft);margin-top:10px;padding:10px 12px;background:var(--mustard-soft);border-radius:10px;}
+.streak-badge{position:absolute;top:14px;right:16px;background:var(--paper);border:1px solid var(--line);border-radius:20px;padding:5px 11px;font-size:12px;font-weight:700;color:var(--ink);box-shadow:var(--shadow-sm);}
+.streak-badge span{font-family:var(--font-mono);}
+.nudge-banner{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px;padding:11px 14px;background:var(--paper-alt);border:1.5px dashed var(--line-strong);border-radius:12px;font-size:12.5px;color:var(--ink-soft);}
+.nudge-banner button{flex-shrink:0;background:var(--ink);color:var(--paper-alt);border:none;padding:7px 12px;border-radius:9px;font-size:11.5px;font-weight:700;cursor:pointer;}
+.nudge-banner button:active{transform:scale(0.94);}
 .insight-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 .insight-cell{background:var(--paper);border:1px solid var(--line);border-radius:11px;padding:11px 12px;}
 .insight-cell .ic-label{font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--ink-faint);margin-bottom:5px;}
@@ -373,7 +379,7 @@ p{margin:0;}
   <div class="view" id="view-lock">
     <div class="onboard-card">
       <div class="onboard-stamp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg></div>
-      <h2>Ledger is locked</h2>
+      <h2>Rupaya is locked</h2>
       <p>Enter your PIN to continue.</p>
       <input class="text-input" id="lock-pin-input" type="password" inputmode="numeric" maxlength="6" placeholder="• • • •" style="text-align:center;font-size:22px;letter-spacing:10px;padding:16px 14px;">
       <button class="btn-primary" id="lock-unlock-btn">Unlock</button>
@@ -387,7 +393,7 @@ p{margin:0;}
     <div class="onboard-card">
       <div class="onboard-stamp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h11a1 1 0 0 1 1 1v16l-2.5-1.7L13 20l-2.5-1.7L8 20l-2-1.4V4a1 1 0 0 1 1-1 1 1 0 0 0-1 1v15"/><path d="M9 8h6M9 12h6M9 16h3.5"/></svg></div>
       <h2>Connect your ledger</h2>
-      <p>Ledger stores every expense and income entry in a Google Sheet you own. Paste your Apps Script URL below to start syncing — it takes about two minutes to set up.</p>
+      <p>Rupaya stores every expense and income entry in a Google Sheet you own. Paste your Apps Script URL below to start syncing — it takes about two minutes to set up.</p>
       <div class="onboard-steps">
         <ol>
           <li>Open the <strong>Code.gs</strong> file from this project in Google Apps Script</li>
@@ -399,7 +405,7 @@ p{margin:0;}
       <input class="text-input" id="onboard-url" type="url" placeholder="https://script.google.com/macros/s/.../exec">
       <button class="btn-primary" id="onboard-connect">Connect &amp; sync</button>
       <p id="onboard-error"></p>
-      <div id="onboard-skip">Skip for now — use Ledger offline on this device</div>
+      <div id="onboard-skip">Skip for now — use Rupaya offline on this device</div>
     </div>
   </div>
 
@@ -410,12 +416,9 @@ p{margin:0;}
       <div class="brand">
         <div class="brand-mark" id="brand-mark">₹</div>
         <div class="brand-text">
-          <h1>Ledger</h1>
+          <h1>Rupaya</h1>
           <span>Daily expense tracker</span>
         </div>
-      </div>
-      <div class="topbar-actions">
-        <button class="icon-btn" id="btn-goto-settings" style="position:relative;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.9 7.9 0 0 0 0-2l1.8-1.4-2-3.4-2.1.8a8 8 0 0 0-1.7-1L15 3.6h-4l-.4 2.4a8 8 0 0 0-1.7 1l-2.1-.8-2 3.4L6.6 11a7.9 7.9 0 0 0 0 2l-1.8 1.4 2 3.4 2.1-.8a8 8 0 0 0 1.7 1l.4 2.4h4l.4-2.4a8 8 0 0 0 1.7-1l2.1.8 2-3.4-1.8-1.4Z"/></svg><span class="badge-dot" id="settings-badge-dot" style="display:none;"></span></button>
       </div>
     </div>
 
@@ -423,6 +426,7 @@ p{margin:0;}
     <div class="tab-panel" id="tab-overview">
       <div class="view active" style="padding:0 20px;">
         <div class="receipt">
+          <div class="streak-badge" id="streak-badge" style="display:none;">🔥 <span id="streak-count">0</span></div>
           <div class="receipt-eyebrow">
             <span id="hero-period-label">This week</span>
             <span>Spent</span>
@@ -449,6 +453,11 @@ p{margin:0;}
           <button data-period="week" class="active">Week</button>
           <button data-period="month">Month</button>
           <button data-period="year">Year</button>
+        </div>
+
+        <div class="nudge-banner" id="today-nudge" style="display:none;">
+          <span>You haven't logged anything today yet.</span>
+          <button id="nudge-add-btn">+ Add now</button>
         </div>
 
         <div class="insight-line" id="insight-line" style="display:none;">💡 <span id="insight-text"></span></div>
@@ -582,7 +591,7 @@ p{margin:0;}
           </div>
         </div>
 
-        <p style="font-size:11.5px;color:var(--ink-faint);text-align:center;margin-top:20px;">Ledger v2.1 · your data lives in your own Google Sheet</p>
+        <p style="font-size:11.5px;color:var(--ink-faint);text-align:center;margin-top:20px;">Rupaya v2.1 · your data lives in your own Google Sheet</p>
       </div>
     </div>
   </div>
@@ -603,8 +612,9 @@ p{margin:0;}
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v17l-2.5-1.6L13 20l-2.5-1.6L8 20l-2-1.3V3Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
       <span class="nav-label">History</span>
     </button>
-    <button class="nav-item" data-tab="settings">
+    <button class="nav-item" data-tab="settings" style="position:relative;">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.9 7.9 0 0 0 0-2l1.8-1.4-2-3.4-2.1.8a8 8 0 0 0-1.7-1L15 3.6h-4l-.4 2.4a8 8 0 0 0-1.7 1l-2.1-.8-2 3.4L6.6 11a7.9 7.9 0 0 0 0 2l-1.8 1.4 2 3.4 2.1-.8a8 8 0 0 0 1.7 1l.4 2.4h4l.4-2.4a8 8 0 0 0 1.7-1l2.1.8 2-3.4-1.8-1.4Z"/></svg>
+      <span class="badge-dot" id="settings-badge-dot" style="display:none;top:2px;right:22%;"></span>
       <span class="nav-label">Settings</span>
     </button>
   </div>
@@ -734,7 +744,7 @@ p{margin:0;}
     <div class="modal-handle"></div>
     <div class="modal-head"><h3>Privacy</h3><button class="icon-btn" data-close-sheet="privacy">✕</button></div>
     <div class="switch-row">
-      <span style="font-size:13.5px;">Require PIN to open Ledger</span>
+      <span style="font-size:13.5px;">Require PIN to open Rupaya</span>
       <div class="switch" id="pin-switch"></div>
     </div>
     <div id="pin-setup" style="display:none;margin-top:8px;">
@@ -945,6 +955,11 @@ function initApp(){
     processRecurring();
     renderAll();
     syncFromSheet();
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  if(params.get('action') === 'add' && state.scriptUrl){
+    setTimeout(() => openModal(null), 150);
   }
 }
 
@@ -1341,6 +1356,33 @@ function renderHero(){
   }else{
     insightBox.style.display = 'none';
   }
+
+  // daily logging streak
+  const streak = computeStreak();
+  const streakBadge = document.getElementById('streak-badge');
+  if(streak > 0){
+    streakBadge.style.display = 'block';
+    document.getElementById('streak-count').textContent = streak + ' day' + (streak === 1 ? '' : 's');
+  }else{
+    streakBadge.style.display = 'none';
+  }
+
+  // nudge to log today if nothing's been added yet
+  const nudge = document.getElementById('today-nudge');
+  const loggedToday = state.expenses.some(e => e.date === todayStr());
+  nudge.style.display = (state.expenses.length > 0 && !loggedToday) ? 'flex' : 'none';
+}
+
+function computeStreak(){
+  const loggedDates = new Set(state.expenses.filter(e => e.type === 'expense').map(e => e.date));
+  let cursor = new Date();
+  if(!loggedDates.has(toKey(cursor))) cursor = addDays(cursor, -1);
+  let streak = 0;
+  while(loggedDates.has(toKey(cursor))){
+    streak++;
+    cursor = addDays(cursor, -1);
+  }
+  return streak;
 }
 
 /* ---------------- RENDER: RECENT LIST ---------------- */
@@ -1837,7 +1879,6 @@ function bindEvents(){
 
   document.querySelectorAll('.nav-item').forEach(btn => { btn.onclick = () => switchTab(btn.dataset.tab); });
   document.querySelectorAll('[data-goto]').forEach(el => { el.onclick = () => switchTab(el.dataset.goto); });
-  document.getElementById('btn-goto-settings').onclick = () => switchTab('settings');
 
   document.querySelectorAll('.settings-tile').forEach(tile => {
     tile.onclick = () => openSettingsSheet(tile.dataset.sheet);
@@ -1860,6 +1901,7 @@ function bindEvents(){
   });
 
   document.getElementById('fab-add').onclick = () => openModal(null);
+  document.getElementById('nudge-add-btn').onclick = () => openModal(null);
   document.getElementById('modal-close').onclick = closeModal;
   document.getElementById('modal-overlay').onclick = (e) => { if(e.target.id === 'modal-overlay') closeModal(); };
   document.getElementById('form-submit').onclick = submitExpense;
