@@ -210,12 +210,32 @@ p{margin:0;}
 .donut-toggle button.active{background:var(--ink);color:var(--paper-alt);border-color:var(--ink);}
 
 /* ============ TREND BARS ============ */
-.bar-chart{display:flex;align-items:flex-end;gap:8px;height:120px;margin-top:6px;}
-.bar-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:6px;}
+.bar-chart{display:flex;align-items:flex-end;gap:8px;height:120px;margin-top:6px;position:relative;}
+.bar-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:6px;cursor:pointer;}
 .bar-fill-wrap{width:100%;height:92px;display:flex;align-items:flex-end;}
-.bar-fill{width:100%;border-radius:5px 5px 2px 2px;background:var(--green);min-height:3px;transition:height .4s ease;}
+.bar-fill{width:100%;border-radius:5px 5px 2px 2px;background:var(--green);min-height:3px;transition:height .35s var(--ease), background .15s ease, box-shadow .15s ease;}
 .bar-fill.today{background:var(--rust);}
+.bar-fill.selected{background:var(--ink) !important;box-shadow:0 0 0 2px var(--paper-alt), 0 0 0 3.5px var(--ink);}
+.bar-col:active .bar-fill{opacity:0.8;}
 .bar-label{font-size:10px;color:var(--ink-faint);font-weight:600;}
+.bar-col.selected .bar-label{color:var(--ink);font-weight:700;}
+.bar-avg-line{position:absolute;left:0;right:0;border-top:1.5px dashed var(--line-strong);pointer-events:none;}
+.bar-avg-line span{position:absolute;right:0;top:-15px;font-size:9px;font-weight:700;color:var(--ink-faint);background:var(--paper-alt);padding:0 4px;letter-spacing:.3px;text-transform:uppercase;}
+.trend-hint{font-size:11px;color:var(--ink-faint);text-align:center;margin-top:10px;}
+.trend-detail{margin-top:12px;padding:14px;background:var(--paper);border:1px solid var(--line);border-radius:12px;animation:sheetUp .2s var(--ease);}
+.trend-detail-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;}
+.td-label{font-size:11.5px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px;}
+.td-amount{font-family:var(--font-mono);font-size:22px;font-weight:700;color:var(--ink);}
+.td-compare{font-size:11.5px;font-weight:600;padding:4px 9px;border-radius:12px;white-space:nowrap;}
+.td-compare.up{background:var(--rust-soft);color:var(--rust);}
+.td-compare.down{background:var(--green-soft);color:var(--green);}
+.td-compare.flat{background:var(--line);color:var(--ink-faint);}
+.td-cats{display:flex;flex-direction:column;gap:6px;}
+.td-cat-row{display:flex;align-items:center;gap:8px;font-size:12px;}
+.td-cat-row .tdc-dot{width:8px;height:8px;border-radius:2px;flex-shrink:0;}
+.td-cat-row .tdc-label{flex:1;color:var(--ink);}
+.td-cat-row .tdc-amount{font-family:var(--font-mono);font-weight:600;color:var(--ink-soft);}
+.td-empty{font-size:12.5px;color:var(--ink-faint);text-align:center;padding:6px 0;}
 
 /* ============ TX LIST ============ */
 .tx-group-label{font-size:11px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:1px;margin:16px 0 8px;}
@@ -505,6 +525,18 @@ p{margin:0;}
         <div class="card">
           <div class="section-head" style="margin:0 0 4px;"><h3 style="font-size:13px;">Trend</h3></div>
           <div class="bar-chart" id="trend-chart"></div>
+          <p class="trend-hint" id="trend-hint">Tap a bar to see the details</p>
+          <div class="trend-detail" id="trend-detail" style="display:none;">
+            <div class="trend-detail-head">
+              <div>
+                <div class="td-label" id="td-label"></div>
+                <div class="td-amount" id="td-amount"></div>
+              </div>
+              <div class="td-compare" id="td-compare"></div>
+            </div>
+            <div class="td-cats" id="td-cats"></div>
+            <button class="btn-secondary" id="td-view-tx" style="margin-top:10px;">View these transactions →</button>
+          </div>
         </div>
 
         <div class="card">
@@ -876,6 +908,8 @@ let state = {
   currentTab: 'overview',
   periodOverview: 'week',
   periodStats: 'week',
+  trendSelectedIndex: null,
+  currentTrend: [],
   donutType: 'expense',
   catManageType: 'expense',
   formType: 'expense',
@@ -1218,19 +1252,32 @@ function buildTrend(period, cur, list){
   if(period === 'week'){
     const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
     trend = days.map((label,i) => {
-      const key = toKey(addDays(cur.start,i));
-      return { label, amount: sumAmt(list.filter(e=>e.date===key)), isToday: key===todayStr() };
+      const d = addDays(cur.start,i);
+      const key = toKey(d);
+      const dayList = list.filter(e=>e.date===key);
+      return { label, fullLabel: d.toLocaleDateString('en-IN',{weekday:'long', day:'numeric', month:'short'}), amount: sumAmt(dayList), isToday: key===todayStr(), start:key, end:key, list: dayList };
     });
   }else if(period === 'month'){
     const weeksInMonth = Math.ceil((cur.end.getDate() - cur.start.getDate() + 1)/7);
     for(let w=0; w<weeksInMonth; w++){
       const wStart = addDays(cur.start, w*7);
-      const wEnd = addDays(wStart,6);
-      trend.push({ label:'W'+(w+1), amount: sumAmt(list.filter(e=>inRange(e.date,wStart, wEnd>cur.end?cur.end:wEnd))), isToday:false });
+      const wEndRaw = addDays(wStart,6);
+      const wEnd = wEndRaw > cur.end ? cur.end : wEndRaw;
+      const wList = list.filter(e=>inRange(e.date,wStart, wEnd));
+      trend.push({
+        label:'W'+(w+1),
+        fullLabel: 'Week ' + (w+1) + ' (' + wStart.toLocaleDateString('en-IN',{day:'numeric',month:'short'}) + '–' + wEnd.toLocaleDateString('en-IN',{day:'numeric',month:'short'}) + ')',
+        amount: sumAmt(wList), isToday:false, start: toKey(wStart), end: toKey(wEnd), list: wList
+      });
     }
   }else{
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    trend = months.map((label,i) => ({ label, amount: sumAmt(list.filter(e=> new Date(e.date+'T00:00:00').getMonth()===i)), isToday: i===new Date().getMonth() }));
+    trend = months.map((label,i) => {
+      const mList = list.filter(e=> new Date(e.date+'T00:00:00').getMonth()===i);
+      const mStart = new Date(cur.start.getFullYear(), i, 1);
+      const mEnd = new Date(cur.start.getFullYear(), i+1, 0);
+      return { label, fullLabel: label + ' ' + cur.start.getFullYear(), amount: sumAmt(mList), isToday: i===new Date().getMonth(), start: toKey(mStart), end: toKey(mEnd), list: mList };
+    });
   }
   return trend;
 }
@@ -1594,21 +1641,101 @@ function renderDonut(byCategory, total){
     offset += dash;
     const row = document.createElement('div');
     row.className = 'legend-row';
+    row.style.cursor = 'pointer';
     row.innerHTML = `<span class="legend-dot" style="background:${cat.color};"></span><span class="legend-label">${cat.label}</span><span class="legend-pct">${Math.round(cat.pct)}%</span><span class="legend-amount">${money(cat.amount)}</span>`;
+    row.onclick = () => {
+      const range = periodRange(state.periodStats, 0);
+      state.filters = { type: state.donutType, categories:[cat.id], methods:[], dateFrom: toKey(range.start), dateTo: toKey(range.end), amountMin:'', amountMax:'' };
+      switchTab('history');
+      updateFilterBadge();
+    };
     legend.appendChild(row);
   });
 }
 function renderTrend(trend){
+  state.currentTrend = trend;
   const el = document.getElementById('trend-chart');
   el.innerHTML = '';
   const max = Math.max(...trend.map(t=>t.amount), 1);
-  trend.forEach(t => {
+  const avg = trend.reduce((s,t)=>s+t.amount,0) / (trend.length || 1);
+
+  trend.forEach((t,i) => {
     const col = document.createElement('div');
-    col.className = 'bar-col';
+    col.className = 'bar-col' + (state.trendSelectedIndex === i ? ' selected' : '');
     const h = Math.max(3, Math.round((t.amount/max)*92));
-    col.innerHTML = `<div class="bar-fill-wrap"><div class="bar-fill ${t.isToday?'today':''}" style="height:${h}px;" title="${money(t.amount)}"></div></div><div class="bar-label">${t.label}</div>`;
+    col.innerHTML = `<div class="bar-fill-wrap"><div class="bar-fill ${t.isToday?'today':''}${state.trendSelectedIndex===i?' selected':''}" style="height:${h}px;"></div></div><div class="bar-label">${t.label}</div>`;
+    col.onclick = () => selectTrendBar(i);
     el.appendChild(col);
   });
+
+  if(avg > 0){
+    const line = document.createElement('div');
+    line.className = 'bar-avg-line';
+    const avgPx = Math.max(3, Math.round((avg/max)*92));
+    line.style.bottom = (16 + avgPx) + 'px';
+    line.innerHTML = '<span>avg ' + money(Math.round(avg)) + '</span>';
+    el.appendChild(line);
+  }
+
+  if(state.trendSelectedIndex !== null && state.trendSelectedIndex < trend.length){
+    renderTrendDetail(trend, state.trendSelectedIndex);
+  }else{
+    state.trendSelectedIndex = null;
+    document.getElementById('trend-detail').style.display = 'none';
+    document.getElementById('trend-hint').style.display = 'block';
+  }
+}
+
+function selectTrendBar(index){
+  state.trendSelectedIndex = (state.trendSelectedIndex === index) ? null : index;
+  renderTrend(state.currentTrend);
+}
+
+function renderTrendDetail(trend, index){
+  const bucket = trend[index];
+  document.getElementById('trend-hint').style.display = 'none';
+  const panel = document.getElementById('trend-detail');
+  panel.style.display = 'block';
+
+  document.getElementById('td-label').textContent = bucket.fullLabel;
+  document.getElementById('td-amount').textContent = money(bucket.amount);
+
+  const others = trend.filter((t,i) => i !== index && t.amount > 0);
+  const othersAvg = others.length ? others.reduce((s,t)=>s+t.amount,0)/others.length : 0;
+  const compareEl = document.getElementById('td-compare');
+  if(othersAvg > 0){
+    const diff = Math.round(((bucket.amount - othersAvg) / othersAvg) * 100);
+    if(Math.abs(diff) < 5){
+      compareEl.textContent = 'about average';
+      compareEl.className = 'td-compare flat';
+    }else{
+      compareEl.textContent = (diff > 0 ? '▲ ' : '▼ ') + Math.abs(diff) + '% vs avg';
+      compareEl.className = 'td-compare ' + (diff > 0 ? 'up' : 'down');
+    }
+  }else{
+    compareEl.textContent = '';
+    compareEl.className = 'td-compare';
+  }
+
+  const catsEl = document.getElementById('td-cats');
+  catsEl.innerHTML = '';
+  if(bucket.list.length === 0){
+    catsEl.innerHTML = '<div class="td-empty">Nothing spent in this period</div>';
+  }else{
+    const breakdown = categoryBreakdown(bucket.list, 'expense').slice(0,4);
+    breakdown.forEach(cat => {
+      const row = document.createElement('div');
+      row.className = 'td-cat-row';
+      row.innerHTML = `<span class="tdc-dot" style="background:${cat.color};"></span><span class="tdc-label">${cat.label}</span><span class="tdc-amount">${money(cat.amount)}</span>`;
+      catsEl.appendChild(row);
+    });
+  }
+
+  document.getElementById('td-view-tx').onclick = () => {
+    state.filters = { type:'expense', categories:[], methods:[], dateFrom: bucket.start, dateTo: bucket.end, amountMin:'', amountMax:'' };
+    switchTab('history');
+    updateFilterBadge();
+  };
 }
 function renderInsights(stats){
   const el = document.getElementById('insight-grid');
@@ -1894,7 +2021,7 @@ function bindEvents(){
     b.onclick = () => { document.querySelectorAll('#segmented-overview button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); state.periodOverview = b.dataset.period; renderHero(); positionSegThumb(document.getElementById('segmented-overview')); };
   });
   document.querySelectorAll('#segmented-stats button').forEach(b => {
-    b.onclick = () => { document.querySelectorAll('#segmented-stats button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); state.periodStats = b.dataset.period; renderStats(); positionSegThumb(document.getElementById('segmented-stats')); };
+    b.onclick = () => { document.querySelectorAll('#segmented-stats button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); state.periodStats = b.dataset.period; state.trendSelectedIndex = null; renderStats(); positionSegThumb(document.getElementById('segmented-stats')); };
   });
   document.querySelectorAll('#donut-toggle button').forEach(b => {
     b.onclick = () => { document.querySelectorAll('#donut-toggle button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); state.donutType = b.dataset.t; renderStats(); };
