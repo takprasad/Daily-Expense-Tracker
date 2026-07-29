@@ -947,7 +947,13 @@ function catById(id, type){
 }
 function money(n){ return state.currency + fmt(n); }
 function fmt(n){ n = Number(n) || 0; const hasCents = Math.round(n*100) % 100 !== 0; return n.toLocaleString('en-IN', { minimumFractionDigits: hasCents ? 2 : 0, maximumFractionDigits: 2 }); }
-function todayStr(){ return new Date().toISOString().slice(0,10); }
+function todayStr(){ return formatLocalDate(new Date()); }
+function formatLocalDate(d){
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
 
 /* ---------------- INIT ---------------- */
 function init(){
@@ -1197,13 +1203,13 @@ function processRecurring(){
     let cursor = new Date(anchorDate.getFullYear(), anchorDate.getMonth()+1, 1);
     const nowMonthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     while(cursor <= nowMonthStart){
-      const ym = cursor.toISOString().slice(0,7);
+      const ym = formatLocalDate(cursor).slice(0,7);
       if(!monthsCovered.has(ym)){
         const lastDay = new Date(cursor.getFullYear(), cursor.getMonth()+1, 0).getDate();
         const newDate = new Date(cursor.getFullYear(), cursor.getMonth(), Math.min(day, lastDay));
         const newExpense = {
           id: 'local-' + Date.now() + '-' + Math.random().toString(36).slice(2,6),
-          date: newDate.toISOString().slice(0,10),
+          date: formatLocalDate(newDate),
           type: anchor.type, category: anchor.category, amount: anchor.amount,
           method: anchor.method, note: anchor.note, recurring: true,
           recurringId: anchor.id, timestamp: new Date().toISOString()
@@ -1222,7 +1228,7 @@ function processRecurring(){
 /* ---------------- DATE HELPERS ---------------- */
 function startOfWeek(d){ const dt = new Date(d); const day=(dt.getDay()+6)%7; dt.setDate(dt.getDate()-day); dt.setHours(0,0,0,0); return dt; }
 function addDays(d,n){ const r=new Date(d); r.setDate(r.getDate()+n); return r; }
-function toKey(d){ return d.toISOString().slice(0,10); }
+function toKey(d){ return formatLocalDate(d); }
 function periodRange(period, offset){
   const now = new Date();
   if(period === 'week'){ const start = addDays(startOfWeek(now), offset*7); const end = addDays(start,6); return {start,end}; }
@@ -1258,17 +1264,20 @@ function buildTrend(period, cur, list){
       return { label, fullLabel: d.toLocaleDateString('en-IN',{weekday:'long', day:'numeric', month:'short'}), amount: sumAmt(dayList), isToday: key===todayStr(), start:key, end:key, list: dayList };
     });
   }else if(period === 'month'){
-    const weeksInMonth = Math.ceil((cur.end.getDate() - cur.start.getDate() + 1)/7);
-    for(let w=0; w<weeksInMonth; w++){
-      const wStart = addDays(cur.start, w*7);
-      const wEndRaw = addDays(wStart,6);
-      const wEnd = wEndRaw > cur.end ? cur.end : wEndRaw;
-      const wList = list.filter(e=>inRange(e.date,wStart, wEnd));
+    let weekStart = startOfWeek(cur.start); // Monday on/before the 1st of the month
+    let weekNum = 1;
+    while(weekStart <= cur.end){
+      const weekEndFull = addDays(weekStart, 6);
+      const bucketStart = weekStart < cur.start ? cur.start : weekStart;
+      const bucketEnd = weekEndFull > cur.end ? cur.end : weekEndFull;
+      const wList = list.filter(e=>inRange(e.date, bucketStart, bucketEnd));
       trend.push({
-        label:'W'+(w+1),
-        fullLabel: 'Week ' + (w+1) + ' (' + wStart.toLocaleDateString('en-IN',{day:'numeric',month:'short'}) + '–' + wEnd.toLocaleDateString('en-IN',{day:'numeric',month:'short'}) + ')',
-        amount: sumAmt(wList), isToday:false, start: toKey(wStart), end: toKey(wEnd), list: wList
+        label:'W'+weekNum,
+        fullLabel: 'Week ' + weekNum + ' (' + bucketStart.toLocaleDateString('en-IN',{day:'numeric',month:'short'}) + '–' + bucketEnd.toLocaleDateString('en-IN',{day:'numeric',month:'short'}) + ')',
+        amount: sumAmt(wList), isToday:false, start: toKey(bucketStart), end: toKey(bucketEnd), list: wList
       });
+      weekStart = addDays(weekStart, 7);
+      weekNum++;
     }
   }else{
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
