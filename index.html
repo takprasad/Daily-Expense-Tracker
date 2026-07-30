@@ -696,8 +696,13 @@ p{margin:0;}
     </div>
 
     <div class="recurring-toggle-row">
-      <span>Repeat monthly</span>
+      <span>Repeat</span>
       <div class="switch" id="form-recurring-switch"></div>
+    </div>
+    <div class="segmented" id="form-frequency-row" style="display:none;margin-top:0;margin-bottom:16px;">
+      <button data-freq="weekly">Weekly</button>
+      <button data-freq="monthly" class="active">Monthly</button>
+      <button data-freq="yearly">Yearly</button>
     </div>
 
     <button class="btn-primary" id="form-submit">Save transaction</button>
@@ -833,6 +838,7 @@ p{margin:0;}
     <div id="cat-manage-list"></div>
     <button class="btn-secondary" id="btn-add-category">+ Add category</button>
     <div class="cat-add-form" id="cat-add-form">
+      <div class="modal-head" style="margin-bottom:12px;"><h3 id="cat-form-title" style="font-size:14px;">New category</h3></div>
       <label class="field-label">Label</label>
       <input class="text-input" id="new-cat-label" placeholder="e.g. Pet care">
       <div class="form-row-2">
@@ -846,6 +852,7 @@ p{margin:0;}
         </div>
       </div>
       <button class="btn-primary" id="btn-save-category">Add category</button>
+      <button class="btn-secondary" id="btn-cancel-category-edit" style="display:none;">Cancel</button>
     </div>
   </div>
 </div>
@@ -895,7 +902,7 @@ const METHODS = [
 
 const LS = {
   url:'ledger.scriptUrl', cache:'ledger.cache', currency:'ledger.currency',
-  dark:'ledger.dark', catExpense:'ledger.categories.expense', catIncome:'ledger.categories.income',
+  dark:'ledger.dark', categories:'ledger.categories', categoriesPushed:'ledger.categoriesPushedOnce',
   budgets:'ledger.budgets', pending:'ledger.pendingOps', pin:'ledger.pin'
 };
 
@@ -904,6 +911,7 @@ let state = {
   currency: localStorage.getItem(LS.currency) || '₹',
   expenses: [],
   budgets: {},
+  categories: { expense: DEFAULT_EXPENSE_CATEGORIES.slice(), income: DEFAULT_INCOME_CATEGORIES.slice() },
   pendingOps: [],
   currentTab: 'overview',
   periodOverview: 'week',
@@ -912,9 +920,11 @@ let state = {
   currentTrend: [],
   donutType: 'expense',
   catManageType: 'expense',
+  editingCategoryId: null,
   formType: 'expense',
   formMethod: 'cash',
   formRecurring: false,
+  formFrequency: 'monthly',
   editingId: null,
   connected: false,
   selectMode: false,
@@ -925,18 +935,30 @@ let state = {
 };
 
 /* ---------------- CATEGORY HELPERS ---------------- */
-function loadCategories(type){
-  const key = type === 'income' ? LS.catIncome : LS.catExpense;
-  const raw = localStorage.getItem(key);
-  if(raw){ try{ return JSON.parse(raw); }catch(e){} }
-  const defaults = type === 'income' ? DEFAULT_INCOME_CATEGORIES : DEFAULT_EXPENSE_CATEGORIES;
-  localStorage.setItem(key, JSON.stringify(defaults));
-  return defaults.slice();
+function loadCategoriesCache(){
+  const raw = localStorage.getItem(LS.categories);
+  if(raw){
+    try{
+      const parsed = JSON.parse(raw);
+      if(parsed && Array.isArray(parsed.expense) && Array.isArray(parsed.income)){ state.categories = parsed; return; }
+    }catch(e){}
+  }
+  // Migrate from the old per-type keys used before categories synced to the Sheet,
+  // so nobody's existing custom categories get silently lost by this upgrade.
+  const legacyExpense = localStorage.getItem('ledger.categories.expense');
+  const legacyIncome = localStorage.getItem('ledger.categories.income');
+  if(legacyExpense || legacyIncome){
+    try{ if(legacyExpense) state.categories.expense = JSON.parse(legacyExpense); }catch(e){}
+    try{ if(legacyIncome) state.categories.income = JSON.parse(legacyIncome); }catch(e){}
+    saveCategoriesCache();
+  }
 }
-function saveCategories(type, list){
-  localStorage.setItem(type === 'income' ? LS.catIncome : LS.catExpense, JSON.stringify(list));
+function saveCategoriesCache(){
+  localStorage.setItem(LS.categories, JSON.stringify(state.categories));
 }
-function getCategories(type){ return loadCategories(type); }
+function getCategories(type){
+  return state.categories[type === 'income' ? 'income' : 'expense'];
+}
 function catById(id, type){
   const list = getCategories(type || 'expense');
   let found = list.find(c => c.id === id);
@@ -976,6 +998,7 @@ function initApp(){
 
   const cachedBudgets = localStorage.getItem(LS.budgets);
   if(cachedBudgets){ try{ state.budgets = JSON.parse(cachedBudgets); }catch(e){} }
+  loadCategoriesCache();
 
   renderFormTypeUI();
   renderMethodRow();
@@ -1066,6 +1089,11 @@ async function syncFromSheet(){
 
       state.expenses = [...localOnly, ...merged];
       if(json.budgets) state.budgets = json.budgets;
+      const justPushedLocalCategories = await pushLocalCategoriesIfNeeded();
+      if(!justPushedLocalCategories && json.categories && Array.isArray(json.categories.expense) && Array.isArray(json.categories.income)){
+        state.categories = json.categories;
+        saveCategoriesCache();
+      }
       localStorage.setItem(LS.cache, JSON.stringify(state.expenses));
       localStorage.setItem(LS.budgets, JSON.stringify(state.budgets));
       setConnStatus('on');
@@ -1091,6 +1119,7 @@ function normalizeRow(row){
     note: row.note || '',
     recurring: row.recurring === true || row.recurring === 'TRUE' || row.recurring === 'true',
     recurringId: row.recurringId || '',
+    frequency: row.frequency || 'monthly',
     timestamp: row.timestamp || ''
   };
 }
@@ -1157,6 +1186,32 @@ async function pushSaveBudget(category, limit){
   if(!result.ok && result.retry){ queueOp('saveBudget', { category, limit }); return { status:'queued' }; }
   return result.json || { status:'error' };
 }
+async function pushSaveCategory(cat){
+  const result = await sendToServer('saveCategory', cat);
+  if(!result.ok && result.retry){ queueOp('saveCategory', cat); return { status:'queued' }; }
+  return result.json || { status:'error' };
+}
+async function pushDeleteCategory(id){
+  const result = await sendToServer('deleteCategory', { id });
+  if(!result.ok && result.retry){ queueOp('deleteCategory', { id }); return { status:'queued' }; }
+  return result.json || { status:'error' };
+}
+/* One-time safety net: if this browser already has categories (from before
+   categories synced to the Sheet, or just its own customizations) and the
+   server has never seen them, push them up rather than letting a sync
+   silently pull down and overwrite with fresh server defaults. */
+async function pushLocalCategoriesIfNeeded(){
+  if(!state.scriptUrl || localStorage.getItem(LS.categoriesPushed)) return false;
+  const all = [
+    ...state.categories.expense.map((c,i) => ({ ...c, type:'expense', order:i })),
+    ...state.categories.income.map((c,i) => ({ ...c, type:'income', order:i }))
+  ];
+  for(const cat of all){
+    await sendToServer('saveCategory', cat);
+  }
+  localStorage.setItem(LS.categoriesPushed, '1');
+  return true;
+}
 
 async function flushPendingOps(){
   if(!state.scriptUrl || state.pendingOps.length === 0) return;
@@ -1195,34 +1250,73 @@ function setConnStatus(mode){
 function processRecurring(){
   const anchors = state.expenses.filter(e => e.recurring && e.recurringId === e.id);
   let changed = false;
+  const now = new Date();
+  now.setHours(0,0,0,0);
+
   anchors.forEach(anchor => {
+    const frequency = anchor.frequency || 'monthly';
     const instances = state.expenses.filter(e => e.recurringId === anchor.id);
-    const monthsCovered = new Set(instances.map(e => e.date.slice(0,7)));
     const anchorDate = new Date(anchor.date + 'T00:00:00');
-    const day = anchorDate.getDate();
-    let cursor = new Date(anchorDate.getFullYear(), anchorDate.getMonth()+1, 1);
-    const nowMonthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-    while(cursor <= nowMonthStart){
-      const ym = formatLocalDate(cursor).slice(0,7);
-      if(!monthsCovered.has(ym)){
-        const lastDay = new Date(cursor.getFullYear(), cursor.getMonth()+1, 0).getDate();
-        const newDate = new Date(cursor.getFullYear(), cursor.getMonth(), Math.min(day, lastDay));
-        const newExpense = {
-          id: 'local-' + Date.now() + '-' + Math.random().toString(36).slice(2,6),
-          date: formatLocalDate(newDate),
-          type: anchor.type, category: anchor.category, amount: anchor.amount,
-          method: anchor.method, note: anchor.note, recurring: true,
-          recurringId: anchor.id, timestamp: new Date().toISOString()
-        };
-        state.expenses.unshift(newExpense);
-        monthsCovered.add(ym);
-        changed = true;
-        pushAdd(newExpense);
+
+    if(frequency === 'weekly'){
+      const coveredDates = new Set(instances.map(e => e.date));
+      let cursor = addDays(anchorDate, 7);
+      while(cursor <= now){
+        const key = formatLocalDate(cursor);
+        if(!coveredDates.has(key)){
+          if(addRecurringInstance(anchor, key)) changed = true;
+          coveredDates.add(key);
+        }
+        cursor = addDays(cursor, 7);
       }
-      cursor = new Date(cursor.getFullYear(), cursor.getMonth()+1, 1);
+    }else if(frequency === 'yearly'){
+      const coveredYears = new Set(instances.map(e => e.date.slice(0,4)));
+      const day = anchorDate.getDate();
+      const month = anchorDate.getMonth();
+      let cursor = new Date(anchorDate.getFullYear()+1, month, 1);
+      const nowYearStart = new Date(now.getFullYear(), 0, 1);
+      while(new Date(cursor.getFullYear(), 0, 1) <= nowYearStart){
+        const yr = String(cursor.getFullYear());
+        if(!coveredYears.has(yr)){
+          const lastDay = new Date(cursor.getFullYear(), month+1, 0).getDate();
+          const newDate = new Date(cursor.getFullYear(), month, Math.min(day, lastDay));
+          if(newDate <= now && addRecurringInstance(anchor, formatLocalDate(newDate))) changed = true;
+          coveredYears.add(yr);
+        }
+        cursor = new Date(cursor.getFullYear()+1, month, 1);
+      }
+    }else{
+      const monthsCovered = new Set(instances.map(e => e.date.slice(0,7)));
+      const day = anchorDate.getDate();
+      let cursor = new Date(anchorDate.getFullYear(), anchorDate.getMonth()+1, 1);
+      const nowMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      while(cursor <= nowMonthStart){
+        const ym = formatLocalDate(cursor).slice(0,7);
+        if(!monthsCovered.has(ym)){
+          const lastDay = new Date(cursor.getFullYear(), cursor.getMonth()+1, 0).getDate();
+          const newDate = new Date(cursor.getFullYear(), cursor.getMonth(), Math.min(day, lastDay));
+          if(addRecurringInstance(anchor, formatLocalDate(newDate))) changed = true;
+          monthsCovered.add(ym);
+        }
+        cursor = new Date(cursor.getFullYear(), cursor.getMonth()+1, 1);
+      }
     }
   });
+
   if(changed) localStorage.setItem(LS.cache, JSON.stringify(state.expenses));
+}
+
+function addRecurringInstance(anchor, dateKey){
+  const newExpense = {
+    id: 'local-' + Date.now() + '-' + Math.random().toString(36).slice(2,6),
+    date: dateKey,
+    type: anchor.type, category: anchor.category, amount: anchor.amount,
+    method: anchor.method, note: anchor.note, recurring: true, frequency: anchor.frequency || 'monthly',
+    recurringId: anchor.id, timestamp: new Date().toISOString()
+  };
+  state.expenses.unshift(newExpense);
+  pushAdd(newExpense);
+  return true;
 }
 
 /* ---------------- DATE HELPERS ---------------- */
@@ -1480,7 +1574,7 @@ async function quickAddTransaction(sample){
   const expense = {
     id: localId, date: todayStr(), type: 'expense', category: sample.category,
     amount: sample.amount, method: sample.method, note: sample.note, recurring:false,
-    recurringId:'', timestamp: new Date().toISOString()
+    frequency: '', recurringId:'', timestamp: new Date().toISOString()
   };
   state.expenses.unshift(expense);
   localStorage.setItem(LS.cache, JSON.stringify(state.expenses));
@@ -1891,10 +1985,62 @@ function renderCatManageList(){
     row.innerHTML = `
       <div class="cat-swatch" style="background:${c.color}22;">${c.icon}</div>
       <span class="cmr-label">${c.label}</span>
+      <button class="cmr-btn" data-edit-cat="${c.id}" title="Edit">✎</button>
       <button class="cmr-btn" data-del-cat="${c.id}">✕</button>
     `;
     el.appendChild(row);
   });
+}
+
+function openCategoryEditForm(catId){
+  const cat = getCategories(state.catManageType).find(c => c.id === catId);
+  if(!cat) return;
+  state.editingCategoryId = catId;
+  document.getElementById('cat-form-title').textContent = 'Edit category';
+  document.getElementById('new-cat-label').value = cat.label;
+  document.getElementById('new-cat-icon').value = cat.icon;
+  document.getElementById('new-cat-color').value = cat.color;
+  document.getElementById('btn-save-category').textContent = 'Save changes';
+  document.getElementById('btn-cancel-category-edit').style.display = 'block';
+  document.getElementById('cat-add-form').classList.add('show');
+}
+
+function resetCategoryForm(){
+  state.editingCategoryId = null;
+  document.getElementById('cat-form-title').textContent = 'New category';
+  document.getElementById('new-cat-label').value = '';
+  document.getElementById('new-cat-icon').value = '';
+  document.getElementById('new-cat-color').value = '#5B6B73';
+  document.getElementById('btn-save-category').textContent = 'Add category';
+  document.getElementById('btn-cancel-category-edit').style.display = 'none';
+  document.getElementById('cat-add-form').classList.remove('show');
+}
+
+async function deleteCategoryFlow(catId){
+  const list = getCategories(state.catManageType);
+  if(list.length <= 1){ showToast("Can't delete the last category"); return; }
+
+  const usageCount = state.expenses.filter(e => e.category === catId).length;
+  const fallback = catById(catId, state.catManageType); // used only for label in the confirm message
+  const fallbackId = state.catManageType === 'income' ? 'other-income' : 'other';
+  const hasFallback = list.some(c => c.id === fallbackId) && fallbackId !== catId;
+
+  if(usageCount > 0){
+    const msg = hasFallback
+      ? `${usageCount} transaction${usageCount===1?'':'s'} use "${fallback.label}". Delete it and move ${usageCount===1?'that transaction':'them'} to "Other"?`
+      : `${usageCount} transaction${usageCount===1?'':'s'} use "${fallback.label}". Delete it anyway? Those transactions will show as uncategorized.`;
+    if(!confirm(msg)) return;
+    if(hasFallback){
+      state.expenses.filter(e => e.category === catId).forEach(e => { e.category = fallbackId; });
+      localStorage.setItem(LS.cache, JSON.stringify(state.expenses));
+    }
+  }
+
+  state.categories[state.catManageType] = list.filter(c => c.id !== catId);
+  saveCategoriesCache();
+  renderCatManageList(); renderBudgetInputs(); renderCatGrid(); updateSettingsTiles(); renderAll();
+  showToast('Category deleted');
+  await pushDeleteCategory(catId);
 }
 function renderPinSwitch(){
   const hasPin = !!localStorage.getItem(LS.pin);
@@ -1920,14 +2066,14 @@ function renderBudgetInputs(){
 function renderRecurringList(){
   const el = document.getElementById('recurring-list');
   const anchors = state.expenses.filter(e => e.recurring && e.recurringId === e.id);
-  if(anchors.length === 0){ el.innerHTML = '<p style="font-size:12.5px;color:var(--ink-faint);">No recurring transactions yet. Toggle "Repeat monthly" when adding one.</p>'; return; }
+  if(anchors.length === 0){ el.innerHTML = '<p style="font-size:12.5px;color:var(--ink-faint);">No recurring transactions yet. Toggle "Repeat" when adding one.</p>'; return; }
   el.innerHTML = '';
   anchors.forEach(a => {
     const cat = catById(a.category, a.type);
     const row = document.createElement('div');
     row.className = 'recurring-row';
     row.innerHTML = `
-      <div class="rr-info">${cat.icon} ${cat.label} · <b>${money(a.amount)}</b> · monthly</div>
+      <div class="rr-info">${cat.icon} ${cat.label} · <b>${money(a.amount)}</b> · ${a.frequency || 'monthly'}</div>
       <button class="small-btn" data-stop-recurring="${a.id}">Stop</button>
     `;
     el.appendChild(row);
@@ -2053,7 +2199,17 @@ function bindEvents(){
   document.getElementById('form-recurring-switch').onclick = function(){
     state.formRecurring = !state.formRecurring;
     this.classList.toggle('on', state.formRecurring);
+    document.getElementById('form-frequency-row').style.display = state.formRecurring ? 'flex' : 'none';
+    requestAnimationFrame(() => positionSegThumb(document.getElementById('form-frequency-row')));
   };
+  document.querySelectorAll('#form-frequency-row button').forEach(b => {
+    b.onclick = () => {
+      document.querySelectorAll('#form-frequency-row button').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      state.formFrequency = b.dataset.freq;
+      positionSegThumb(document.getElementById('form-frequency-row'));
+    };
+  });
 
   document.body.addEventListener('click', async (e) => {
     const delId = e.target.getAttribute && e.target.getAttribute('data-del');
@@ -2061,17 +2217,13 @@ function bindEvents(){
     const checkId = e.target.getAttribute && e.target.getAttribute('data-check');
     if(checkId){ e.stopPropagation(); toggleSelect(checkId); return; }
     const delCat = e.target.getAttribute && e.target.getAttribute('data-del-cat');
-    if(delCat){
-      const list = getCategories(state.catManageType);
-      if(list.length <= 1){ showToast("Can't delete the last category"); return; }
-      saveCategories(state.catManageType, list.filter(c => c.id !== delCat));
-      renderCatManageList(); renderBudgetInputs(); updateSettingsTiles();
-      return;
-    }
+    if(delCat){ await deleteCategoryFlow(delCat); return; }
+    const editCat = e.target.getAttribute && e.target.getAttribute('data-edit-cat');
+    if(editCat){ openCategoryEditForm(editCat); return; }
     const stopId = e.target.getAttribute && e.target.getAttribute('data-stop-recurring');
     if(stopId){
       const exp = state.expenses.find(x => x.id === stopId);
-      if(exp){ exp.recurring = false; localStorage.setItem(LS.cache, JSON.stringify(state.expenses)); await pushUpdate(exp); renderRecurringList(); updateSettingsTiles(); showToast('Recurring stopped'); }
+      if(exp){ exp.recurring = false; exp.frequency = ''; localStorage.setItem(LS.cache, JSON.stringify(state.expenses)); await pushUpdate(exp); renderRecurringList(); updateSettingsTiles(); showToast('Recurring stopped'); }
       return;
     }
   });
@@ -2187,22 +2339,39 @@ function bindEvents(){
     showToast('Budgets saved');
   };
   document.querySelectorAll('#cat-manage-type-toggle button').forEach(b => {
-    b.onclick = () => { document.querySelectorAll('#cat-manage-type-toggle button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); state.catManageType = b.dataset.t; renderCatManageList(); positionSegThumb(document.getElementById('cat-manage-type-toggle')); };
+    b.onclick = () => { document.querySelectorAll('#cat-manage-type-toggle button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); state.catManageType = b.dataset.t; resetCategoryForm(); renderCatManageList(); positionSegThumb(document.getElementById('cat-manage-type-toggle')); };
   });
-  document.getElementById('btn-add-category').onclick = () => { document.getElementById('cat-add-form').classList.toggle('show'); };
-  document.getElementById('btn-save-category').onclick = () => {
+  document.getElementById('btn-add-category').onclick = () => {
+    const form = document.getElementById('cat-add-form');
+    const isOpen = form.classList.contains('show');
+    resetCategoryForm();
+    if(!isOpen) form.classList.add('show');
+  };
+  document.getElementById('btn-cancel-category-edit').onclick = resetCategoryForm;
+  document.getElementById('btn-save-category').onclick = async () => {
     const label = document.getElementById('new-cat-label').value.trim();
     const icon = document.getElementById('new-cat-icon').value.trim() || '🔹';
     const color = document.getElementById('new-cat-color').value;
     if(!label){ showToast('Enter a category name'); return; }
-    const id = label.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'') + '-' + Date.now().toString(36).slice(-4);
+
     const list = getCategories(state.catManageType);
-    list.push({ id, label, icon, color });
-    saveCategories(state.catManageType, list);
-    document.getElementById('new-cat-label').value=''; document.getElementById('new-cat-icon').value='';
-    document.getElementById('cat-add-form').classList.remove('show');
+    let cat;
+    if(state.editingCategoryId){
+      cat = list.find(c => c.id === state.editingCategoryId);
+      if(!cat){ resetCategoryForm(); return; }
+      cat.label = label; cat.icon = icon; cat.color = color;
+    }else{
+      const id = label.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'') + '-' + Date.now().toString(36).slice(-4);
+      cat = { id, label, icon, color };
+      list.push(cat);
+    }
+    saveCategoriesCache();
+    const wasEditing = !!state.editingCategoryId;
+    resetCategoryForm();
     renderCatManageList(); renderBudgetInputs(); renderCatGrid(); updateSettingsTiles();
-    showToast('Category added');
+    showToast(wasEditing ? 'Category updated' : 'Category added');
+
+    await pushSaveCategory({ ...cat, type: state.catManageType, order: list.findIndex(c => c.id === cat.id) });
   };
 }
 
@@ -2253,7 +2422,7 @@ function openSettingsSheet(name){
   if(!overlay) return;
   if(name === 'budgets') renderBudgetInputs();
   if(name === 'recurring') renderRecurringList();
-  if(name === 'categories') renderCatManageList();
+  if(name === 'categories'){ resetCategoryForm(); renderCatManageList(); }
   if(name === 'connection') setConnStatus(state.connected ? 'on' : 'off');
   if(name === 'privacy') renderPinSwitch();
   overlay.classList.add('active');
@@ -2300,17 +2469,21 @@ function openModal(editData){
   state.formType = editData ? editData.type : 'expense';
   state.formMethod = editData ? editData.method : 'cash';
   state.formRecurring = editData ? !!editData.recurring : false;
+  state.formFrequency = (editData && editData.frequency) ? editData.frequency : 'monthly';
   state.selectedCategory = editData ? editData.category : null;
 
   document.getElementById('form-amount').value = editData ? editData.amount : '';
   document.getElementById('form-note').value = editData ? editData.note : '';
   document.getElementById('form-date').value = editData ? editData.date : todayStr();
   document.getElementById('form-recurring-switch').classList.toggle('on', state.formRecurring);
+  document.getElementById('form-frequency-row').style.display = state.formRecurring ? 'flex' : 'none';
+  document.querySelectorAll('#form-frequency-row button').forEach(b => b.classList.toggle('active', b.dataset.freq === state.formFrequency));
 
   renderFormTypeUI();
   renderMethodRow();
   renderNoteSuggestions();
   document.getElementById('modal-overlay').classList.add('active');
+  requestAnimationFrame(() => positionSegThumb(document.getElementById('form-frequency-row')));
 }
 function closeModal(){ document.getElementById('modal-overlay').classList.remove('active'); state.editingId = null; }
 
@@ -2336,7 +2509,7 @@ async function duplicateTransaction(){
   const copy = {
     id: localId, date: todayStr(), type: source.type, category: source.category,
     amount: source.amount, method: source.method, note: source.note, recurring: false,
-    recurringId: '', timestamp: new Date().toISOString()
+    frequency: '', recurringId: '', timestamp: new Date().toISOString()
   };
   state.expenses.unshift(copy);
   localStorage.setItem(LS.cache, JSON.stringify(state.expenses));
@@ -2358,6 +2531,7 @@ async function submitExpense(){
     existing.date = date; existing.type = state.formType; existing.category = state.selectedCategory;
     existing.amount = amount; existing.method = state.formMethod; existing.note = note;
     existing.recurring = state.formRecurring;
+    existing.frequency = state.formRecurring ? state.formFrequency : '';
     if(state.formRecurring && !existing.recurringId) existing.recurringId = existing.id;
     if(!state.formRecurring) existing.recurringId = '';
     localStorage.setItem(LS.cache, JSON.stringify(state.expenses));
@@ -2370,6 +2544,7 @@ async function submitExpense(){
   const expense = {
     id: localId, date, type: state.formType, category: state.selectedCategory,
     amount, method: state.formMethod, note, recurring: state.formRecurring,
+    frequency: state.formRecurring ? state.formFrequency : '',
     recurringId: state.formRecurring ? localId : '', timestamp: new Date().toISOString()
   };
   state.expenses.unshift(expense);
