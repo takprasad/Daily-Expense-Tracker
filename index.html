@@ -577,6 +577,33 @@ p{margin:0;}
       </div>
     </div>
 
+    <!-- ---------- TAB: BIG EXPENSES ---------- -->
+    <div class="tab-panel" id="tab-big" style="display:none;">
+      <div class="view active" style="padding:0 20px;">
+        <div class="section-head" style="margin-top:18px;">
+          <h3>Big expenses</h3>
+        </div>
+        <p style="font-size:12.5px;color:var(--ink-faint);margin:-6px 0 16px;">Major one-time purchases, tracked on their own so they don't skew your daily stats or budgets.</p>
+
+        <div class="quick-stats" style="margin-top:0;">
+          <div class="quick-stat expense"><div class="qs-label">This year</div><div class="qs-value mono" id="big-total-year">0</div></div>
+          <div class="quick-stat"><div class="qs-label">All time</div><div class="qs-value mono" id="big-total-all">0</div></div>
+        </div>
+
+        <button class="btn-primary" id="btn-add-big" style="margin-top:14px;">+ Add big expense</button>
+
+        <div class="card" id="big-breakdown-card" style="display:none;margin-top:16px;">
+          <div class="section-head" style="margin:0 0 10px;"><h3 style="font-size:13px;">By category</h3></div>
+          <div class="legend" id="big-breakdown-list"></div>
+        </div>
+
+        <div class="section-head">
+          <h3>All big expenses</h3>
+        </div>
+        <div id="big-list"></div>
+      </div>
+    </div>
+
     <!-- ---------- TAB: SETTINGS ---------- -->
     <div class="tab-panel" id="tab-settings" style="display:none;">
       <div class="view active" style="padding:0 20px;">
@@ -644,6 +671,10 @@ p{margin:0;}
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v17l-2.5-1.6L13 20l-2.5-1.6L8 20l-2-1.3V3Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
       <span class="nav-label">History</span>
     </button>
+    <button class="nav-item" data-tab="big">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12l3 6-9 12L3 9Z"/><path d="M3 9h18M9 3 6 9l6 12 6-12-3-6"/></svg>
+      <span class="nav-label">Big</span>
+    </button>
     <button class="nav-item" data-tab="settings" style="position:relative;">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.9 7.9 0 0 0 0-2l1.8-1.4-2-3.4-2.1.8a8 8 0 0 0-1.7-1L15 3.6h-4l-.4 2.4a8 8 0 0 0-1.7 1l-2.1-.8-2 3.4L6.6 11a7.9 7.9 0 0 0 0 2l-1.8 1.4 2 3.4 2.1-.8a8 8 0 0 0 1.7 1l.4 2.4h4l.4-2.4a8 8 0 0 0 1.7-1l2.1.8 2-3.4-1.8-1.4Z"/></svg>
       <span class="badge-dot" id="settings-badge-dot" style="display:none;top:2px;right:22%;"></span>
@@ -705,6 +736,11 @@ p{margin:0;}
       <button data-freq="yearly">Yearly</button>
     </div>
 
+    <div class="recurring-toggle-row">
+      <span>Big one-time expense <span class="tx-tag" style="vertical-align:1px;">keeps it off daily stats</span></span>
+      <div class="switch" id="form-big-switch"></div>
+    </div>
+
     <button class="btn-primary" id="form-submit">Save transaction</button>
     <button class="btn-secondary" id="form-duplicate" style="display:none;">Duplicate as new (today)</button>
     <button class="btn-primary danger" id="form-delete" style="display:none;">Delete transaction</button>
@@ -753,6 +789,14 @@ p{margin:0;}
         <div><input class="text-input" id="filter-amount-min" type="number" placeholder="Min"></div>
         <div><input class="text-input" id="filter-amount-max" type="number" placeholder="Max"></div>
       </div>
+    </div>
+
+    <div class="filter-section">
+      <div class="switch-row" style="margin-bottom:0;">
+        <span style="font-size:13.5px;">Include big expenses</span>
+        <div class="switch" id="filter-include-big"></div>
+      </div>
+      <p style="font-size:11px;color:var(--ink-faint);margin-top:4px;">Big expenses are tracked separately — see the <strong>Big</strong> tab. Turn this on to also show them here.</p>
     </div>
 
     <div class="filter-actions">
@@ -925,12 +969,13 @@ let state = {
   formMethod: 'cash',
   formRecurring: false,
   formFrequency: 'monthly',
+  formBig: false,
   editingId: null,
   connected: false,
   selectMode: false,
   selectedIds: new Set(),
   sortBy: 'date-desc',
-  filters: { type:'all', categories:[], methods:[], dateFrom:'', dateTo:'', amountMin:'', amountMax:'' },
+  filters: { type:'all', categories:[], methods:[], dateFrom:'', dateTo:'', amountMin:'', amountMax:'', includeBig:false },
   historySearch: ''
 };
 
@@ -1120,6 +1165,7 @@ function normalizeRow(row){
     recurring: row.recurring === true || row.recurring === 'TRUE' || row.recurring === 'true',
     recurringId: row.recurringId || '',
     frequency: row.frequency || 'monthly',
+    big: row.big === true || row.big === 'TRUE' || row.big === 'true',
     timestamp: row.timestamp || ''
   };
 }
@@ -1387,8 +1433,8 @@ function buildTrend(period, cur, list){
 function computeStats(period){
   const cur = periodRange(period, 0);
   const prev = periodRange(period, -1);
-  const curAll = state.expenses.filter(e => inRange(e.date, cur.start, cur.end));
-  const prevAll = state.expenses.filter(e => inRange(e.date, prev.start, prev.end));
+  const curAll = state.expenses.filter(e => inRange(e.date, cur.start, cur.end) && !e.big);
+  const prevAll = state.expenses.filter(e => inRange(e.date, prev.start, prev.end) && !e.big);
   const curExpense = curAll.filter(e => e.type !== 'income');
   const curIncome = curAll.filter(e => e.type === 'income');
   const prevExpense = prevAll.filter(e => e.type !== 'income');
@@ -1537,7 +1583,7 @@ function computeStreak(){
 
 /* ---------------- RENDER: RECENT LIST ---------------- */
 function renderRecent(){
-  const list = [...state.expenses].sort((a,b)=> (b.date+b.timestamp).localeCompare(a.date+a.timestamp)).slice(0,6);
+  const list = state.expenses.filter(e => !e.big).sort((a,b)=> (b.date+b.timestamp).localeCompare(a.date+a.timestamp)).slice(0,6);
   const el = document.getElementById('recent-list');
   el.innerHTML = '';
   if(list.length === 0){ el.innerHTML = emptyStateHTML('No transactions yet', 'Tap the + button to log your first expense or income.'); return; }
@@ -1549,7 +1595,7 @@ function renderQuickAdd(){
   const section = document.getElementById('quick-add-section');
   const row = document.getElementById('quick-add-row');
   const freq = {};
-  state.expenses.filter(e => e.type === 'expense').forEach(e => {
+  state.expenses.filter(e => e.type === 'expense' && !e.big).forEach(e => {
     const key = e.category + '|' + e.amount + '|' + (e.note || '');
     if(!freq[key]) freq[key] = { count:0, sample:e };
     freq[key].count++;
@@ -1569,12 +1615,48 @@ function renderQuickAdd(){
   });
 }
 
+/* ---------------- BIG EXPENSES ---------------- */
+function renderBigPage(){
+  const bigItems = state.expenses.filter(e => e.big).sort((a,b)=> (b.date+b.timestamp).localeCompare(a.date+a.timestamp));
+  const thisYear = new Date().getFullYear();
+
+  const yearTotal = sumAmt(bigItems.filter(e => e.type !== 'income' && e.date.slice(0,4) === String(thisYear)));
+  const allTimeTotal = sumAmt(bigItems.filter(e => e.type !== 'income'));
+  document.getElementById('big-total-year').textContent = money(yearTotal);
+  document.getElementById('big-total-all').textContent = money(allTimeTotal);
+
+  const breakdownCard = document.getElementById('big-breakdown-card');
+  const breakdownList = document.getElementById('big-breakdown-list');
+  const expenseItems = bigItems.filter(e => e.type !== 'income');
+  if(expenseItems.length === 0){
+    breakdownCard.style.display = 'none';
+  }else{
+    breakdownCard.style.display = 'block';
+    const breakdown = categoryBreakdown(expenseItems, 'expense');
+    breakdownList.innerHTML = '';
+    breakdown.forEach(cat => {
+      const row = document.createElement('div');
+      row.className = 'legend-row';
+      row.innerHTML = `<span class="legend-dot" style="background:${cat.color};"></span><span class="legend-label">${cat.label}</span><span class="legend-pct">${Math.round(cat.pct)}%</span><span class="legend-amount">${money(cat.amount)}</span>`;
+      breakdownList.appendChild(row);
+    });
+  }
+
+  const listEl = document.getElementById('big-list');
+  listEl.innerHTML = '';
+  if(bigItems.length === 0){
+    listEl.innerHTML = emptyStateHTML('No big expenses yet', 'Track major purchases like electronics, appliances, or trips here — they stay off your daily stats and budgets.');
+    return;
+  }
+  bigItems.forEach((e,i) => listEl.appendChild(txRow(e,i)));
+}
+
 async function quickAddTransaction(sample){
   const localId = 'local-' + Date.now();
   const expense = {
     id: localId, date: todayStr(), type: 'expense', category: sample.category,
     amount: sample.amount, method: sample.method, note: sample.note, recurring:false,
-    frequency: '', recurringId:'', timestamp: new Date().toISOString()
+    frequency: '', big: false, recurringId:'', timestamp: new Date().toISOString()
   };
   state.expenses.unshift(expense);
   localStorage.setItem(LS.cache, JSON.stringify(state.expenses));
@@ -1901,6 +1983,7 @@ function renderStatsBudgets(){
 function applyFiltersSort(){
   let list = [...state.expenses];
   const f = state.filters;
+  if(!f.includeBig) list = list.filter(e => !e.big);
   if(f.type !== 'all') list = list.filter(e => e.type === f.type);
   if(f.categories.length) list = list.filter(e => f.categories.includes(e.category));
   if(f.methods.length) list = list.filter(e => f.methods.includes(e.method));
@@ -1957,7 +2040,7 @@ function formatGroupDate(dateStr){
 }
 function updateFilterBadge(){
   const f = state.filters;
-  const active = f.type!=='all' || f.categories.length || f.methods.length || f.dateFrom || f.dateTo || f.amountMin!=='' || f.amountMax!=='';
+  const active = f.type!=='all' || f.categories.length || f.methods.length || f.dateFrom || f.dateTo || f.amountMin!=='' || f.amountMax!=='' || f.includeBig;
   document.getElementById('filter-badge').style.display = active ? 'block' : 'none';
   document.getElementById('btn-open-filters').classList.toggle('active-filter', !!active);
 }
@@ -2122,6 +2205,7 @@ function renderAll(){
   renderRecent();
   renderStats();
   renderHistory();
+  renderBigPage();
   renderBudgetInputs();
   renderRecurringList();
   updateFilterBadge();
@@ -2130,10 +2214,11 @@ function renderAll(){
 }
 
 /* ---------------- CSV EXPORT ---------------- */
-function exportCSV(){
-  const rows = [['Date','Type','Category','Amount','Method','Note','Recurring']];
-  applyFiltersSort().forEach(e => {
-    rows.push([e.date, e.type, catById(e.category,e.type).label, e.amount, e.method, (e.note||'').replace(/"/g,'""'), e.recurring?'Yes':'No']);
+function exportCSV(all){
+  const rows = [['Date','Type','Category','Amount','Method','Note','Recurring','Big']];
+  const list = all ? [...state.expenses].sort((a,b)=> (b.date+b.timestamp).localeCompare(a.date+a.timestamp)) : applyFiltersSort();
+  list.forEach(e => {
+    rows.push([e.date, e.type, catById(e.category,e.type).label, e.amount, e.method, (e.note||'').replace(/"/g,'""'), e.recurring?'Yes':'No', e.big?'Yes':'No']);
   });
   const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type:'text/csv' });
@@ -2184,6 +2269,7 @@ function bindEvents(){
 
   document.getElementById('fab-add').onclick = () => openModal(null);
   document.getElementById('nudge-add-btn').onclick = () => openModal(null);
+  document.getElementById('btn-add-big').onclick = () => openModal(null, { presetBig: true });
   document.getElementById('modal-close').onclick = closeModal;
   document.getElementById('modal-overlay').onclick = (e) => { if(e.target.id === 'modal-overlay') closeModal(); };
   document.getElementById('form-submit').onclick = submitExpense;
@@ -2201,6 +2287,10 @@ function bindEvents(){
     this.classList.toggle('on', state.formRecurring);
     document.getElementById('form-frequency-row').style.display = state.formRecurring ? 'flex' : 'none';
     requestAnimationFrame(() => positionSegThumb(document.getElementById('form-frequency-row')));
+  };
+  document.getElementById('form-big-switch').onclick = function(){
+    state.formBig = !state.formBig;
+    this.classList.toggle('on', state.formBig);
   };
   document.querySelectorAll('#form-frequency-row button').forEach(b => {
     b.onclick = () => {
@@ -2248,8 +2338,8 @@ function bindEvents(){
     showUndoToast(removed.length + ' transactions deleted', removed);
     ids.forEach(id => pushDelete(id));
   };
-  document.getElementById('btn-export-csv').onclick = exportCSV;
-  document.getElementById('settings-export-csv').onclick = exportCSV;
+  document.getElementById('btn-export-csv').onclick = () => exportCSV(false);
+  document.getElementById('settings-export-csv').onclick = () => exportCSV(true);
 
   // Filters
   document.getElementById('btn-open-filters').onclick = openFilterSheet;
@@ -2259,7 +2349,7 @@ function bindEvents(){
     b.onclick = () => { document.querySelectorAll('#filter-type button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); positionSegThumb(document.getElementById('filter-type')); };
   });
   document.getElementById('filter-reset').onclick = () => {
-    state.filters = { type:'all', categories:[], methods:[], dateFrom:'', dateTo:'', amountMin:'', amountMax:'' };
+    state.filters = { type:'all', categories:[], methods:[], dateFrom:'', dateTo:'', amountMin:'', amountMax:'', includeBig:false };
     document.getElementById('filter-overlay').classList.remove('active');
     renderHistory(); updateFilterBadge();
   };
@@ -2272,7 +2362,8 @@ function bindEvents(){
       dateFrom: document.getElementById('filter-date-from').value,
       dateTo: document.getElementById('filter-date-to').value,
       amountMin: document.getElementById('filter-amount-min').value,
-      amountMax: document.getElementById('filter-amount-max').value
+      amountMax: document.getElementById('filter-amount-max').value,
+      includeBig: document.getElementById('filter-include-big').classList.contains('on')
     };
     document.getElementById('filter-overlay').classList.remove('active');
     renderHistory(); updateFilterBadge();
@@ -2402,16 +2493,19 @@ function openFilterSheet(){
   document.getElementById('filter-date-to').value = f.dateTo;
   document.getElementById('filter-amount-min').value = f.amountMin;
   document.getElementById('filter-amount-max').value = f.amountMax;
+  document.getElementById('filter-include-big').classList.toggle('on', !!f.includeBig);
+  document.getElementById('filter-include-big').onclick = function(){ this.classList.toggle('on'); };
   document.getElementById('filter-overlay').classList.add('active');
   requestAnimationFrame(() => positionSegThumb(document.getElementById('filter-type')));
 }
 
 function switchTab(tab){
   state.currentTab = tab;
-  ['overview','stats','history','settings'].forEach(t => { document.getElementById('tab-'+t).style.display = (t===tab) ? 'block' : 'none'; });
+  ['overview','stats','history','big','settings'].forEach(t => { document.getElementById('tab-'+t).style.display = (t===tab) ? 'block' : 'none'; });
   document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.tab === tab));
   if(tab === 'stats') renderStats();
   if(tab === 'history') renderHistory();
+  if(tab === 'big') renderBigPage();
   if(tab === 'settings'){ setConnStatus(state.connected ? 'on' : 'off'); renderBudgetInputs(); renderRecurringList(); renderCatManageList(); renderPinSwitch(); updatePendingBadge(); updateSettingsTiles(); }
   requestAnimationFrame(() => { positionAllSegThumbs(); positionNavIndicator(); });
 }
@@ -2459,9 +2553,10 @@ function updateSettingsTiles(){
 }
 
 /* ---------------- MODAL (ADD / EDIT) ---------------- */
-function openModal(editData){
+function openModal(editData, opts){
+  opts = opts || {};
   state.editingId = editData ? editData.id : null;
-  document.getElementById('modal-title').textContent = editData ? 'Edit transaction' : 'Add transaction';
+  document.getElementById('modal-title').textContent = editData ? 'Edit transaction' : (opts.presetBig ? 'Add big expense' : 'Add transaction');
   document.getElementById('form-delete').style.display = editData ? 'block' : 'none';
   document.getElementById('form-duplicate').style.display = editData ? 'block' : 'none';
   document.getElementById('form-submit').textContent = editData ? 'Save changes' : 'Save transaction';
@@ -2470,6 +2565,7 @@ function openModal(editData){
   state.formMethod = editData ? editData.method : 'cash';
   state.formRecurring = editData ? !!editData.recurring : false;
   state.formFrequency = (editData && editData.frequency) ? editData.frequency : 'monthly';
+  state.formBig = editData ? !!editData.big : !!opts.presetBig;
   state.selectedCategory = editData ? editData.category : null;
 
   document.getElementById('form-amount').value = editData ? editData.amount : '';
@@ -2478,6 +2574,7 @@ function openModal(editData){
   document.getElementById('form-recurring-switch').classList.toggle('on', state.formRecurring);
   document.getElementById('form-frequency-row').style.display = state.formRecurring ? 'flex' : 'none';
   document.querySelectorAll('#form-frequency-row button').forEach(b => b.classList.toggle('active', b.dataset.freq === state.formFrequency));
+  document.getElementById('form-big-switch').classList.toggle('on', state.formBig);
 
   renderFormTypeUI();
   renderMethodRow();
@@ -2509,7 +2606,7 @@ async function duplicateTransaction(){
   const copy = {
     id: localId, date: todayStr(), type: source.type, category: source.category,
     amount: source.amount, method: source.method, note: source.note, recurring: false,
-    frequency: '', recurringId: '', timestamp: new Date().toISOString()
+    frequency: '', big: !!source.big, recurringId: '', timestamp: new Date().toISOString()
   };
   state.expenses.unshift(copy);
   localStorage.setItem(LS.cache, JSON.stringify(state.expenses));
@@ -2532,6 +2629,7 @@ async function submitExpense(){
     existing.amount = amount; existing.method = state.formMethod; existing.note = note;
     existing.recurring = state.formRecurring;
     existing.frequency = state.formRecurring ? state.formFrequency : '';
+    existing.big = state.formBig;
     if(state.formRecurring && !existing.recurringId) existing.recurringId = existing.id;
     if(!state.formRecurring) existing.recurringId = '';
     localStorage.setItem(LS.cache, JSON.stringify(state.expenses));
@@ -2544,7 +2642,7 @@ async function submitExpense(){
   const expense = {
     id: localId, date, type: state.formType, category: state.selectedCategory,
     amount, method: state.formMethod, note, recurring: state.formRecurring,
-    frequency: state.formRecurring ? state.formFrequency : '',
+    frequency: state.formRecurring ? state.formFrequency : '', big: state.formBig,
     recurringId: state.formRecurring ? localId : '', timestamp: new Date().toISOString()
   };
   state.expenses.unshift(expense);
