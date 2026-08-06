@@ -5,9 +5,9 @@ A fast, attractive, mobile-first money tracker that stores everything in a Googl
 ## Features
 
 **Track**
-- Expenses *and* income, with payment method (Cash / Card / UPI / Bank / Other)
-- Custom categories — add, edit, or remove your own, separately for expenses and income
-- Recurring transactions (e.g. rent, salary, subscriptions) that auto-repeat monthly
+- Expenses *and* income, with payment method (Cash / Card / UPI / Bank / Other — UPI is the default when adding a new one)
+- Custom categories — add, edit, or remove your own, separately for expenses and income, synced to your Sheet so they follow you across devices
+- Recurring transactions (e.g. rent, salary, subscriptions) on a weekly, monthly, or yearly cadence — auto-repeats and catches up automatically
 - Edit, duplicate, or delete any past entry
 - **Quick add** — your most frequent expenses (same category + amount + note, repeated 2+ times) show up as one-tap chips on the home screen, so logging your usual coffee or lunch doesn't need the full form
 - Note autocomplete — suggests notes you've used before for whatever category is selected
@@ -15,15 +15,23 @@ A fast, attractive, mobile-first money tracker that stores everything in a Googl
 **Understand**
 - Weekly, monthly, and yearly views with period-over-period comparison
 - Category breakdown (donut chart, with the period total in the center) for expenses or income
-- Trend chart (daily / weekly / monthly bars depending on the period)
+- Interactive trend chart (daily / weekly / monthly bars depending on the period) — tap any bar to see that day/week/month's total, how it compares to the average, and its top categories, then jump straight to those transactions in History
+- Tap a category in the "By category" legend to jump straight to that category's transactions for the current period
 - An insights panel: average daily spend, top category, biggest single expense, days logged, savings rate
 - A one-line auto-generated insight on the home screen
-- A daily logging streak badge on the home screen, plus a gentle nudge if you haven't logged anything yet today
+- A gentle nudge if you haven't logged anything yet today
+- The home screen's mini chart shows real daily spending for the current month at a glance, not a decorative placeholder — today's bar is highlighted
 
 **Budget**
 - Set an overall monthly budget and per-category monthly budgets
 - Progress bars turn amber near the limit and red when you go over
 - A heads-up warning appears right after you save an expense that pushes you over a budget
+
+**Big expenses**
+- A dedicated **Big** tab for major one-time purchases (a laptop, an appliance, a trip) that would otherwise distort your daily numbers
+- Mark any transaction as a "big one-time expense" when adding or editing it — it's automatically kept out of the home screen, weekly/monthly/yearly stats, budget calculations, and quick-add suggestions
+- The Big tab shows its own this-year and all-time totals, plus a category breakdown, so major purchases are still easy to review — just on their own terms
+- History stays clean by default too; a toggle in its filter sheet lets you bring big expenses back into view there if you want everything in one list
 
 **Find**
 - Sort by newest, oldest, highest amount, or lowest amount
@@ -112,24 +120,24 @@ expense-tracker/
 - The app talks to your Sheet through a small JSON API defined in `Code.gs`: `doGet` lists transactions and budgets, `doPost` handles `add`, `update`, `delete`, `saveBudget`, and `deleteBudget`.
 - Requests are sent as plain-text bodies to avoid CORS preflight requests, which Apps Script Web Apps can't handle — this is the standard way to talk to Apps Script from a static site.
 - All stats, filtering, sorting, and budget math run client-side from the transaction list already in memory, so there's no extra cost or round-trip for viewing data differently.
-- Recurring transactions work by "catching up": each time the app loads, it checks every recurring transaction and fills in any months since its last occurrence, both locally and in your Sheet.
+- Recurring transactions work by "catching up": each time the app loads, it checks every recurring transaction against its frequency (weekly, monthly, or yearly) and fills in anything missed since its last occurrence, both locally and in your Sheet.
 
 ## Customizing
 
-- **Categories:** managed entirely in **Settings → Categories** inside the app (no code editing needed). They're stored per-device in local storage.
+- **Categories:** managed entirely in **Settings → Categories** inside the app (no code editing needed) — add, edit, or delete them, and they sync to a "Categories" tab in your Sheet so they carry over to any device you use Rupaya on. Deleting a category that's still in use will ask first and offer to move those transactions to "Other" rather than losing track of them.
 - **Currency symbol:** **Settings → Appearance → Currency symbol**.
 - **Colors/fonts:** design tokens are CSS variables at the top of the `<style>` block in `index.html` (`:root { ... }` for light mode, `body.dark { ... }` for dark mode).
 
-## Upgrading from v1
+## Upgrading from an earlier version
 
-If you already have an "Expenses" sheet from the original v1 script, **don't just swap in the new `Code.gs` and keep using it as-is** — v1's columns were `ID, Date, Category, Amount, Note, Timestamp`, while v2 expects `ID, Date, Type, Category, Amount, Method, Note, Recurring, RecurringId, Timestamp`. The column order is different, not just extended, so reading old data with the new script would misalign every field.
+If you already have an "Expenses" sheet from an earlier version of this script, **don't just swap in the new `Code.gs` and keep using it as-is** — the column layout has changed over time (the original v1 layout was just `ID, Date, Category, Amount, Note, Timestamp`; v2 added Type/Method/Recurring columns; v3 added a Frequency column; the current version adds a Big column marking major one-time expenses). Reading old data with a newer script without migrating would misalign fields.
 
-Instead, run the built-in one-time migration:
+Instead, run the built-in migration — it's a single function that detects whichever layout you're currently on (v1, v2, or current) and upgrades it in one step, no matter how far behind you are:
 
 1. Paste the new `Code.gs` into your Sheet's Apps Script editor (replacing the old code), and save.
 2. In the toolbar, pick **migrateFromV1** from the function dropdown next to the Run button, then click **Run**.
-3. Approve the permission prompt if asked. Your "Expenses" sheet now has the new 10-column layout, with every old row preserved — Type defaults to "expense" and Method defaults to "cash" for historical rows (you can edit either afterwards).
+3. Approve the permission prompt if asked. Your "Expenses" sheet now has the current column layout, with every old row preserved — sensible defaults get filled in for anything that didn't exist yet in your old layout (Type defaults to "expense", Method to "cash", Frequency to "monthly" for rows that were already marked recurring).
 4. Redeploy the web app (**Deploy → Manage deployments → Edit → New version**) so it's running the updated code.
-5. It's safe to run `migrateFromV1` more than once — it detects an already-migrated sheet and does nothing.
+5. It's safe to run `migrateFromV1` more than once, any time in the future — it detects an already-current sheet and does nothing.
 
-A new "Budgets" sheet is created automatically the first time you set a budget — no migration needed for that one.
+A "Budgets" sheet and a "Categories" sheet are both created automatically the first time they're needed — no migration needed for either. If you'd already customized your categories in the app before this update, the app pushes those up to the new "Categories" sheet automatically the first time it syncs, rather than overwriting them with fresh defaults.
