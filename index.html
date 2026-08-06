@@ -141,6 +141,7 @@ p{margin:0;}
 .trend-down{background:var(--green-soft);color:var(--green);}
 .receipt-barcode{display:flex;gap:2px;align-items:flex-end;margin-top:16px;height:22px;}
 .receipt-barcode span{flex:1;background:var(--line-strong);border-radius:1px;opacity:0;transform:scaleY(0);transform-origin:bottom;animation:barcodeIn .5s var(--ease) forwards;}
+.receipt-barcode span.today{background:var(--rust);}
 @keyframes barcodeIn{to{opacity:1;transform:scaleY(1);}}
 
 /* ============ QUICK STATS ============ */
@@ -166,8 +167,7 @@ p{margin:0;}
 
 /* ============ INSIGHT ============ */
 .insight-line{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-soft);margin-top:10px;padding:10px 12px;background:var(--mustard-soft);border-radius:10px;}
-.streak-badge{position:absolute;top:14px;right:16px;background:var(--paper);border:1px solid var(--line);border-radius:20px;padding:5px 11px;font-size:12px;font-weight:700;color:var(--ink);box-shadow:var(--shadow-sm);}
-.streak-badge span{font-family:var(--font-mono);}
+
 .nudge-banner{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px;padding:11px 14px;background:var(--paper-alt);border:1.5px dashed var(--line-strong);border-radius:12px;font-size:12.5px;color:var(--ink-soft);}
 .nudge-banner button{flex-shrink:0;background:var(--ink);color:var(--paper-alt);border:none;padding:7px 12px;border-radius:9px;font-size:11.5px;font-weight:700;cursor:pointer;}
 .nudge-banner button:active{transform:scale(0.94);}
@@ -446,7 +446,6 @@ p{margin:0;}
     <div class="tab-panel" id="tab-overview">
       <div class="view active" style="padding:0 20px;">
         <div class="receipt">
-          <div class="streak-badge" id="streak-badge" style="display:none;">🔥 <span id="streak-count">0</span></div>
           <div class="receipt-eyebrow">
             <span id="hero-period-label">This week</span>
             <span>Spent</span>
@@ -966,7 +965,7 @@ let state = {
   catManageType: 'expense',
   editingCategoryId: null,
   formType: 'expense',
-  formMethod: 'cash',
+  formMethod: 'upi',
   formRecurring: false,
   formFrequency: 'monthly',
   formBig: false,
@@ -1521,12 +1520,24 @@ function renderHero(){
 
   const bars = document.getElementById('hero-barcode');
   bars.innerHTML = '';
-  for(let i=0;i<24;i++){
-    const s=document.createElement('span');
-    s.style.height=(6+Math.round(Math.random()*16))+'px';
-    s.style.animationDelay = (i*14)+'ms';
-    bars.appendChild(s);
+  const barsNow = new Date();
+  const barsYear = barsNow.getFullYear(), barsMonth = barsNow.getMonth();
+  const lastDayOfMonth = new Date(barsYear, barsMonth+1, 0).getDate();
+  const todayKey = todayStr();
+  const dailyTotals = [];
+  for(let d=1; d<=lastDayOfMonth; d++){
+    const key = formatLocalDate(new Date(barsYear, barsMonth, d));
+    dailyTotals.push({ key, amount: sumAmt(state.expenses.filter(e => e.date === key && e.type === 'expense' && !e.big)) });
   }
+  const maxDay = Math.max(...dailyTotals.map(d => d.amount), 1);
+  dailyTotals.forEach((day, i) => {
+    const s = document.createElement('span');
+    const h = Math.max(2, Math.round((day.amount/maxDay)*22));
+    s.style.height = h + 'px';
+    s.style.animationDelay = (i*10) + 'ms';
+    if(day.key === todayKey) s.classList.add('today');
+    bars.appendChild(s);
+  });
 
   // overall monthly budget mini
   const overallBudget = Number(state.budgets.overall) || 0;
@@ -1553,32 +1564,10 @@ function renderHero(){
     insightBox.style.display = 'none';
   }
 
-  // daily logging streak
-  const streak = computeStreak();
-  const streakBadge = document.getElementById('streak-badge');
-  if(streak > 0){
-    streakBadge.style.display = 'block';
-    document.getElementById('streak-count').textContent = streak + ' day' + (streak === 1 ? '' : 's');
-  }else{
-    streakBadge.style.display = 'none';
-  }
-
   // nudge to log today if nothing's been added yet
   const nudge = document.getElementById('today-nudge');
   const loggedToday = state.expenses.some(e => e.date === todayStr());
   nudge.style.display = (state.expenses.length > 0 && !loggedToday) ? 'flex' : 'none';
-}
-
-function computeStreak(){
-  const loggedDates = new Set(state.expenses.filter(e => e.type === 'expense').map(e => e.date));
-  let cursor = new Date();
-  if(!loggedDates.has(toKey(cursor))) cursor = addDays(cursor, -1);
-  let streak = 0;
-  while(loggedDates.has(toKey(cursor))){
-    streak++;
-    cursor = addDays(cursor, -1);
-  }
-  return streak;
 }
 
 /* ---------------- RENDER: RECENT LIST ---------------- */
@@ -2562,7 +2551,7 @@ function openModal(editData, opts){
   document.getElementById('form-submit').textContent = editData ? 'Save changes' : 'Save transaction';
 
   state.formType = editData ? editData.type : 'expense';
-  state.formMethod = editData ? editData.method : 'cash';
+  state.formMethod = editData ? editData.method : 'upi';
   state.formRecurring = editData ? !!editData.recurring : false;
   state.formFrequency = (editData && editData.frequency) ? editData.frequency : 'monthly';
   state.formBig = editData ? !!editData.big : !!opts.presetBig;
